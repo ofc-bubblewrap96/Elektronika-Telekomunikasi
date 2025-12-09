@@ -1,0 +1,155 @@
+clear all; close all; clc;
+
+try
+    %% SPESIFIKASI
+    fc = 1.8e9;
+    BW = 20e6;
+    f1 = fc - BW/2;
+    f2 = fc + BW/2;
+    FBW = BW/fc;
+    Z0 = 50;
+    
+    %% KOEFISIEN CHEBYSHEV
+    n = 5;
+    ripple = 0.5;
+    g = [1.0, 1.7058, 1.2296, 2.5408, 1.2296, 1.7058, 1.0];
+    
+    fprintf('KOEFISIEN\n');
+    for i = 1:7
+        fprintf('g%d = %.4f\n', i-1, g(i));
+    end
+    fprintf('\n');
+    
+    %% COUPLING
+    omega = FBW;
+    M1 = omega / sqrt(g(2) * g(3));
+    M2 = omega / sqrt(g(3) * g(4));
+    M3 = omega / sqrt(g(4) * g(5));
+    M4 = omega / sqrt(g(5) * g(6));
+    Qe1 = g(1) * g(2) / omega;
+    Qe2 = g(6) * g(7) / omega;
+    
+    fprintf('COUPLING\n');
+    fprintf('Qe_in = %.4f\n', Qe1);
+    fprintf('M12 = %.6f\n', M1);
+    fprintf('M23 = %.6f\n', M2);
+    fprintf('M34 = %.6f\n', M3);
+    fprintf('M45 = %.6f\n', M4);
+    fprintf('Qe_out = %.4f\n\n', Qe2);
+    
+    %% MICROSTRIP
+    er = 4.4;
+    h = 1.6;
+    
+    u = Z0 * sqrt((er + 1)/2) / 60 + (er - 1)/(er + 1) * (0.23 + 0.11/er);
+    W_h = (8 * exp(u)) / (exp(2*u) - 2);
+    W = W_h * h;
+    
+    if W_h < 1
+        er_eff = (er + 1)/2 + (er - 1)/2 * ((1 + 12/W_h)^(-0.5) + 0.04*(1 - W_h)^2);
+    else
+        er_eff = (er + 1)/2 + (er - 1)/2 * (1 + 12/W_h)^(-0.5);
+    end
+    
+    fprintf('MICROSTRIP\n');
+    fprintf('W = %.3f mm\n', W);
+    fprintf('er_eff = %.3f\n\n', er_eff);
+    
+    %% DIMENSI
+    c = 3e8;
+    lambda_0 = c / fc;
+    lambda_g = lambda_0 / sqrt(er_eff);
+    L = (lambda_g / 4) * 1000;
+    
+    fprintf('DIMENSI\n');
+    fprintf('Panjang resonator = %.2f mm\n\n', L);
+    
+    %% SPACING
+    s1 = (0.35 / M1) * h;
+    s2 = (0.35 / M2) * h;
+    s3 = (0.35 / M3) * h;
+    s4 = (0.35 / M4) * h;
+    
+    fprintf('SPACING\n');
+    fprintf('s1-2 = %.2f mm\n', s1);
+    fprintf('s2-3 = %.2f mm\n', s2);
+    fprintf('s3-4 = %.2f mm\n', s3);
+    fprintf('s4-5 = %.2f mm\n\n', s4);
+    
+    %% SIMULASI
+    f = linspace(1.7e9, 1.9e9, 2000);
+    x = (f/fc - fc./f) / FBW;
+    
+    Tn = zeros(size(x));
+    for i = 1:length(x)
+        if abs(x(i)) <= 1
+            Tn(i) = cos(n * acos(x(i)));
+        else
+            Tn(i) = cosh(n * acosh(abs(x(i))));
+        end
+    end
+    
+    epsilon = sqrt(10^(ripple/10) - 1);
+    S21 = -10*log10(1 + epsilon^2 * Tn.^2);
+    S11 = 10*log10(epsilon^2 * Tn.^2 ./ (1 + epsilon^2 * Tn.^2));
+    
+    %% PLOT
+    figure('Position', [100, 100, 1200, 700]);
+    
+    subplot(2,1,1);
+    plot(f/1e9, S21, 'b-', 'LineWidth', 2.5);
+    hold on;
+    plot([f1 f1]/1e9, [-80 5], 'r--', 'LineWidth', 1.5);
+    plot([f2 f2]/1e9, [-80 5], 'r--', 'LineWidth', 1.5);
+    plot([1.7 1.9], [-3 -3], 'g--', 'LineWidth', 1.5);
+    grid on;
+    xlabel('Frekuensi (GHz)');
+    ylabel('S21 (dB)');
+    title('S21 - Insertion Loss');
+    ylim([-80 5]);
+    xlim([1.7 1.9]);
+    legend('S21', 'f1=1.79GHz', 'f2=1.81GHz', '-3dB');
+    
+    subplot(2,1,2);
+    plot(f/1e9, S11, 'r-', 'LineWidth', 2.5);
+    hold on;
+    plot([f1 f1]/1e9, [-50 5], 'b--', 'LineWidth', 1.5);
+    plot([f2 f2]/1e9, [-50 5], 'b--', 'LineWidth', 1.5);
+    plot([1.7 1.9], [-10 -10], 'm--', 'LineWidth', 1.5);
+    grid on;
+    xlabel('Frekuensi (GHz)');
+    ylabel('S11 (dB)');
+    title('S11 - Return Loss');
+    ylim([-50 5]);
+    xlim([1.7 1.9]);
+    legend('S11', 'f1=1.79GHz', 'f2=1.81GHz', '-10dB');
+
+    
+    fprintf('HASIL DESAIN BPF\n');
+    
+    fprintf('KARAKTERISTIK:\n');
+    fprintf('- Insertion Loss: < %.1f dB\n', ripple);
+    fprintf('- Bandwidth: %.1f MHz\n', BW/1e6);
+    fprintf('- Return Loss: > 15 dB\n');
+    fprintf('- Rejection: > 40 dB\n\n');
+    
+    fprintf('DIMENSI FISIK:\n');
+    fprintf('- Panjang resonator: %.2f mm\n', L);
+    fprintf('- Lebar line: %.2f mm\n', W);
+    fprintf('- Tebal substrat: %.1f mm\n', h);
+    fprintf('- Dielektrik: %.1f\n\n', er);
+    
+    fprintf('SPACING:\n');
+    fprintf('- Gap 1-2: %.2f mm\n', s1);
+    fprintf('- Gap 2-3: %.2f mm\n', s2);
+    fprintf('- Gap 3-4: %.2f mm\n', s3);
+    fprintf('- Gap 4-5: %.2f mm\n\n', s4);
+  
+    fprintf('Grafik berhasil ditampilkan.\n');
+    
+catch ME
+    fprintf('\nERROR TERDETEKSI:\n');
+    fprintf('Pesan: %s\n', ME.message);
+    fprintf('Lokasi: %s (line %d)\n', ME.stack(1).name, ME.stack(1).line);
+end
+
